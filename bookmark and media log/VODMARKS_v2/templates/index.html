@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>VODMarks</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<div class="app">
+  <div class="sidebar">
+    <div class="sideTop">
+      <button onclick="newFolder()">+ Folder</button>
+    </div>
+    <div id="tree"></div>
+  </div>
+  <div class="main">
+    <h2 id="title">Select folder</h2>
+    <div class="addSection">
+      <div class="addOption">
+        <div class="optionLabel">Add YouTube VOD:</div>
+        <div class="row">
+          <input id="url" placeholder="Paste YouTube link">
+          <button onclick="addVod()">Add VOD</button>
+        </div>
+      </div>
+      <div class="addOption">
+        <div class="optionLabel">Add Media (Anime/Movie/etc):</div>
+        <div class="row">
+          <input id="mediaTitle" placeholder="Title (e.g., Frieren)">
+          <input id="mediaDate" placeholder="Year (e.g., 2026)" style="width: 150px;">
+          <button onclick="addMedia()">Add Media</button>
+        </div>
+      </div>
+    </div>
+    <div id="status" class="status"></div>
+    <div id="cards"></div>
+  </div>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>
