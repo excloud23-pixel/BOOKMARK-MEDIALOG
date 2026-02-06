@@ -67,14 +67,6 @@
             <button class="btnPrimary" onclick="addVod()">Add VOD</button>
           </div>
         </div>
-        <div class="addOption">
-          <label class="optionLabel" for="mediaTitle">Add Media (Anime/Movie/etc):</label>
-          <div class="row">
-            <input id="mediaTitle" placeholder="Title (e.g., Frieren)">
-            <input id="mediaDate" placeholder="Year (e.g., 2026)" style="width: 150px;">
-            <button class="btnPrimary" onclick="addMedia()">Add Media</button>
-          </div>
-        </div>
       </section>
       <!-- Bulk action bar (hidden by default) -->
       <div id="bulkBar" class="bulkBar" style="display:none;" role="toolbar" aria-label="Bulk actions">
@@ -92,17 +84,11 @@
 <div id="tab-medialog" class="tabPanel" style="display:none;" role="tabpanel">
   <div class="mediaLogWrap">
     <nav class="mlSidebar" aria-label="Category navigation">
-      <div class="mlSideTitle">Categories</div>
-      <button class="mlCatBtn mlCatActive" data-cat="anime" onclick="selectCategory('anime')">Anime</button>
-      <button class="mlCatBtn" data-cat="movies" onclick="selectCategory('movies')">Movies</button>
-      <button class="mlCatBtn" data-cat="tv" onclick="selectCategory('tv')">TV</button>
-      <button class="mlCatBtn" data-cat="manga" onclick="selectCategory('manga')">Manga</button>
-      <button class="mlCatBtn" data-cat="books" onclick="selectCategory('books')">Books</button>
-      <button class="mlCatBtn" data-cat="games" onclick="selectCategory('games')">Games</button>
+      <div id="mlCategoryList"></div>
     </nav>
     <main class="mlMain">
       <div class="mainHeader">
-        <h2 id="mlTitle">Anime</h2>
+        <h2 id="mlTitle">All Media</h2>
         <div class="viewControls">
           <div class="searchWrap">
             <input id="mlSearchInput" type="search" placeholder="Search... (/)" aria-label="Search media log" autocomplete="off">
@@ -121,9 +107,9 @@
             <input id="mlEntryTitle" placeholder="Title">
             <input id="mlEntryProgress" placeholder="Progress (e.g., Ep 5, Ch 12, 40%)" style="width: 240px;">
             <select id="mlEntryStatus" aria-label="Status">
-              <option value="currently">Currently watching/reading/playing</option>
+              <option value="currently">Currently</option>
               <option value="completed">Completed</option>
-              <option value="plan_to_start">Plan to start</option>
+              <option value="plan_to_watch">Plan to Watch</option>
             </select>
             <button class="btnPrimary" onclick="addMediaLogEntry()">Add</button>
           </div>

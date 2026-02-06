@@ -814,39 +814,8 @@ async function addVod() {
   await loadAll();
 }
 
-async function addMedia() {
-  if (currentMode !== "folder" || !current) {
-    return showToast("Select a real folder first (merged views are read-only).", "error");
-  }
-  const title = document.getElementById("mediaTitle").value.trim();
-  const date = document.getElementById("mediaDate").value.trim();
-
-  if (!title || !date) {
-    showToast("Please fill in both title and year.", "error");
-    return;
-  }
-
-  showToast("Adding media...", "info");
-  const res = await fetch("/api/bookmark", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ folder_id: current, title, date, entry_type: "media" })
-  });
-  const j = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    showToast(j.error || "Failed to add media.", "error");
-    return;
-  }
-  showToast("Media added!", "success");
-  document.getElementById("mediaTitle").value = "";
-  document.getElementById("mediaDate").value = "";
-  await refreshCurrentView();
-  await loadAll();
-}
-
 window.newFolder = newFolder;
 window.addVod = addVod;
-window.addMedia = addMedia;
 
 // ══════════════════════════════════════════════════════
 //  Tab Switching
@@ -872,7 +841,13 @@ function switchTab(tab) {
   closeSidebar();
 
   if (tab === "medialog") {
+    loadMlCategories();
     loadMediaLog(mlCurrentCategory);
+    // Hide add section for special views
+    const addSection = document.querySelector("#tab-medialog .addSection");
+    if (addSection) {
+      addSection.style.display = (mlCurrentCategory === "__all__" || mlCurrentCategory === "__currently__") ? "none" : "";
+    }
   }
 }
 window.switchTab = switchTab;
@@ -913,25 +888,183 @@ window.toggleSidebar = toggleSidebar;
 //  Media Log
 // ══════════════════════════════════════════════════════
 
-let mlCurrentCategory = "anime";
+let mlCurrentCategory = "__all__";
 let mlCurrentCards = [];
+let mlCategories = [];
 
 const STATUS_SHORT = {
-  currently: "In Progress",
+  currently: "Currently",
   completed: "Completed",
-  plan_to_start: "Planned"
+  plan_to_watch: "Plan to Watch"
 };
+
+// ── Category sidebar ──
+
+async function loadMlCategories() {
+  const r = await fetch("/api/media_categories");
+  mlCategories = await r.json();
+  renderMlSidebar();
+}
+
+function renderMlSidebar() {
+  const container = document.getElementById("mlCategoryList");
+  container.innerHTML = "";
+
+  // Views header
+  const viewsHeader = document.createElement("div");
+  viewsHeader.className = "mlSideTitle";
+  viewsHeader.textContent = "Views";
+  container.appendChild(viewsHeader);
+
+  // All Media
+  const allBtn = document.createElement("button");
+  allBtn.className = "mlCatBtn" + (mlCurrentCategory === "__all__" ? " mlCatActive" : "");
+  allBtn.setAttribute("data-cat", "__all__");
+  allBtn.textContent = "All Media";
+  allBtn.onclick = () => selectCategory("__all__");
+  container.appendChild(allBtn);
+
+  // Currently
+  const curBtn = document.createElement("button");
+  curBtn.className = "mlCatBtn" + (mlCurrentCategory === "__currently__" ? " mlCatActive" : "");
+  curBtn.setAttribute("data-cat", "__currently__");
+  curBtn.textContent = "Currently";
+  curBtn.onclick = () => selectCategory("__currently__");
+  container.appendChild(curBtn);
+
+  // Separator
+  const sep = document.createElement("div");
+  sep.className = "mlSideSeparator";
+  container.appendChild(sep);
+
+  // Categories header
+  const catHeader = document.createElement("div");
+  catHeader.className = "mlSideTitle";
+  catHeader.textContent = "Categories";
+  container.appendChild(catHeader);
+
+  // Category rows with reorder/delete
+  for (let i = 0; i < mlCategories.length; i++) {
+    const cat = mlCategories[i];
+    const row = document.createElement("div");
+    row.className = "mlCatRow";
+
+    const btn = document.createElement("button");
+    btn.className = "mlCatBtn" + (mlCurrentCategory === cat.name ? " mlCatActive" : "");
+    btn.setAttribute("data-cat", cat.name);
+    btn.textContent = cat.name;
+    btn.onclick = () => selectCategory(cat.name);
+    row.appendChild(btn);
+
+    const actions = document.createElement("div");
+    actions.className = "mlCatActions";
+
+    const upBtn = document.createElement("button");
+    upBtn.className = "mlCatReorderBtn";
+    upBtn.innerHTML = "&#9650;";
+    upBtn.title = "Move up";
+    upBtn.disabled = i === 0;
+    upBtn.onclick = async (e) => {
+      e.stopPropagation();
+      await fetch(`/api/media_categories/${cat.id}/reorder`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ direction: "up" })
+      });
+      await loadMlCategories();
+    };
+    actions.appendChild(upBtn);
+
+    const downBtn = document.createElement("button");
+    downBtn.className = "mlCatReorderBtn";
+    downBtn.innerHTML = "&#9660;";
+    downBtn.title = "Move down";
+    downBtn.disabled = i === mlCategories.length - 1;
+    downBtn.onclick = async (e) => {
+      e.stopPropagation();
+      await fetch(`/api/media_categories/${cat.id}/reorder`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ direction: "down" })
+      });
+      await loadMlCategories();
+    };
+    actions.appendChild(downBtn);
+
+    const delBtn = document.createElement("button");
+    delBtn.className = "mlCatDelBtn";
+    delBtn.innerHTML = "&times;";
+    delBtn.title = "Delete category";
+    delBtn.onclick = async (e) => {
+      e.stopPropagation();
+      const ok = await showModal(
+        "Delete Category",
+        `Delete "${cat.name}" and all its entries? This cannot be undone.`,
+        "Delete",
+        true
+      );
+      if (!ok) return;
+      await fetch(`/api/media_categories/${cat.id}`, { method: "DELETE" });
+      showToast(`Deleted "${cat.name}"`, "success");
+      if (mlCurrentCategory === cat.name) {
+        mlCurrentCategory = "__all__";
+        document.getElementById("mlTitle").textContent = "All Media";
+      }
+      await loadMlCategories();
+      loadMediaLog(mlCurrentCategory);
+    };
+    actions.appendChild(delBtn);
+
+    row.appendChild(actions);
+    container.appendChild(row);
+  }
+
+  // Add Category button
+  const addBtn = document.createElement("button");
+  addBtn.className = "mlAddCatBtn";
+  addBtn.textContent = "+ Add Category";
+  addBtn.onclick = async () => {
+    const name = prompt("Category name:");
+    if (!name || !name.trim()) return;
+    const res = await fetch("/api/media_categories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name.trim() })
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) return showToast(j.error || "Failed to add category.", "error");
+    showToast(`Category "${name.trim()}" added`, "success");
+    await loadMlCategories();
+  };
+  container.appendChild(addBtn);
+}
+
+// ── Category selection ──
 
 function selectCategory(cat) {
   mlCurrentCategory = cat;
-  document.querySelectorAll(".mlCatBtn").forEach(b => b.classList.remove("mlCatActive"));
-  const btn = document.querySelector(`.mlCatBtn[data-cat="${cat}"]`);
-  if (btn) btn.classList.add("mlCatActive");
-  document.getElementById("mlTitle").textContent = btn ? btn.textContent : cat;
+  renderMlSidebar();
+
+  if (cat === "__all__") {
+    document.getElementById("mlTitle").textContent = "All Media";
+  } else if (cat === "__currently__") {
+    document.getElementById("mlTitle").textContent = "Currently";
+  } else {
+    document.getElementById("mlTitle").textContent = cat;
+  }
+
+  // Hide add section for special views
+  const addSection = document.querySelector("#tab-medialog .addSection");
+  if (addSection) {
+    addSection.style.display = (cat === "__all__" || cat === "__currently__") ? "none" : "";
+  }
+
   loadMediaLog(cat);
   closeSidebar();
 }
 window.selectCategory = selectCategory;
+
+// ── Data loading ──
 
 async function loadMediaLog(category) {
   const r = await fetch(`/api/media_log?category=${encodeURIComponent(category)}`);
@@ -966,73 +1099,37 @@ document.getElementById("mlSearchInput").addEventListener("input", () => {
   applyMlSearchAndSort();
 });
 
-function renderMediaLogCards(list) {
-  const el = document.getElementById("mlCards");
-  el.innerHTML = "";
+// ── Card rendering ──
 
-  if (!Array.isArray(list) || list.length === 0) {
-    const q = (document.getElementById("mlSearchInput").value || "").trim();
-    if (q) {
-      el.innerHTML = `<div class="emptyState">
-        <div class="emptyIcon">\uD83D\uDD0D</div>
-        <div class="emptyTitle">No results found</div>
-        <div class="emptyHint">Try a different search term.</div>
-      </div>`;
-    } else {
-      el.innerHTML = `<div class="emptyState">
-        <div class="emptyIcon">\uD83C\uDFAC</div>
-        <div class="emptyTitle">No entries yet</div>
-        <div class="emptyHint">Add your first ${mlCurrentCategory} entry using the form above.</div>
-      </div>`;
-    }
-    return;
-  }
+function createMlEntryCard(item, animIdx, showCategory) {
+  const card = document.createElement("div");
+  card.className = "mlEntryCard cardAnimateIn";
+  card.style.animationDelay = `${animIdx * 0.04}s`;
+  card.setAttribute("role", "listitem");
 
-  // Group by status
-  const groups = { currently: [], completed: [], plan_to_start: [] };
-  for (const item of list) {
-    const s = item.status || "plan_to_start";
-    if (groups[s]) groups[s].push(item);
-    else groups.plan_to_start.push(item);
-  }
+  const categoryBadge = showCategory ? `<span class="mlEntryCat">${escapeHtml(item.category)}</span>` : "";
 
-  let animIdx = 0;
-  for (const [statusKey, items] of Object.entries(groups)) {
-    if (items.length === 0) continue;
+  card.innerHTML = `
+    <div class="mlEntryContent">
+      <div class="mlEntryInfo">
+        <span class="mlEntryTitle" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>
+        ${categoryBadge}
+        <span class="mlEntryProgress">${escapeHtml(item.progress || "\u2014")}</span>
+      </div>
+      <div class="mlEntryActions">
+        <select class="mlStatusSelect" data-id="${item.id}" aria-label="Status for ${escapeHtml(item.title)}">
+          <option value="currently" ${item.status === "currently" ? "selected" : ""}>Currently</option>
+          <option value="completed" ${item.status === "completed" ? "selected" : ""}>Completed</option>
+          <option value="plan_to_watch" ${item.status === "plan_to_watch" ? "selected" : ""}>Plan to Watch</option>
+        </select>
+        <button class="mlEditBtn" data-id="${item.id}" data-title="${escapeHtml(item.title)}" data-progress="${escapeHtml(item.progress || "")}" aria-label="Edit ${escapeHtml(item.title)}">Edit</button>
+        <button class="miniBtn mlDelBtn" data-id="${item.id}" aria-label="Delete ${escapeHtml(item.title)}">Delete</button>
+      </div>
+    </div>`;
+  return card;
+}
 
-    const header = document.createElement("div");
-    header.className = "mlGroupHeader";
-    header.textContent = STATUS_SHORT[statusKey] || statusKey;
-    el.appendChild(header);
-
-    for (const item of items) {
-      const card = document.createElement("div");
-      card.className = "mlEntryCard cardAnimateIn";
-      card.style.animationDelay = `${animIdx * 0.04}s`;
-      card.setAttribute("role", "listitem");
-      animIdx++;
-
-      card.innerHTML = `
-        <div class="mlEntryContent">
-          <div class="mlEntryInfo">
-            <span class="mlEntryTitle" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>
-            <span class="mlEntryProgress">${escapeHtml(item.progress || "\u2014")}</span>
-          </div>
-          <div class="mlEntryActions">
-            <select class="mlStatusSelect" data-id="${item.id}" aria-label="Status for ${escapeHtml(item.title)}">
-              <option value="currently" ${item.status === "currently" ? "selected" : ""}>In Progress</option>
-              <option value="completed" ${item.status === "completed" ? "selected" : ""}>Completed</option>
-              <option value="plan_to_start" ${item.status === "plan_to_start" ? "selected" : ""}>Planned</option>
-            </select>
-            <button class="mlEditBtn" data-id="${item.id}" data-title="${escapeHtml(item.title)}" data-progress="${escapeHtml(item.progress || "")}" aria-label="Edit ${escapeHtml(item.title)}">Edit</button>
-            <button class="miniBtn mlDelBtn" data-id="${item.id}" aria-label="Delete ${escapeHtml(item.title)}">Delete</button>
-          </div>
-        </div>`;
-      el.appendChild(card);
-    }
-  }
-
-  // Status change
+function attachMlCardHandlers(el) {
   el.querySelectorAll(".mlStatusSelect").forEach(sel => {
     sel.onchange = async () => {
       const id = sel.getAttribute("data-id");
@@ -1046,7 +1143,6 @@ function renderMediaLogCards(list) {
     };
   });
 
-  // Edit — uses modal (#11)
   el.querySelectorAll(".mlEditBtn").forEach(btn => {
     btn.onclick = async () => {
       const id = btn.getAttribute("data-id");
@@ -1064,7 +1160,6 @@ function renderMediaLogCards(list) {
     };
   });
 
-  // Delete — uses modal (#11)
   el.querySelectorAll(".mlDelBtn").forEach(btn => {
     btn.onclick = async () => {
       const id = btn.getAttribute("data-id");
@@ -1077,7 +1172,82 @@ function renderMediaLogCards(list) {
   });
 }
 
+function renderMediaLogCards(list) {
+  const el = document.getElementById("mlCards");
+  el.innerHTML = "";
+
+  if (!Array.isArray(list) || list.length === 0) {
+    const q = (document.getElementById("mlSearchInput").value || "").trim();
+    if (q) {
+      el.innerHTML = `<div class="emptyState">
+        <div class="emptyIcon">\uD83D\uDD0D</div>
+        <div class="emptyTitle">No results found</div>
+        <div class="emptyHint">Try a different search term.</div>
+      </div>`;
+    } else {
+      const label = mlCurrentCategory === "__all__" ? "media"
+        : mlCurrentCategory === "__currently__" ? "in-progress"
+        : escapeHtml(mlCurrentCategory);
+      el.innerHTML = `<div class="emptyState">
+        <div class="emptyIcon">\uD83C\uDFAC</div>
+        <div class="emptyTitle">No entries yet</div>
+        <div class="emptyHint">No ${label} entries to show.</div>
+      </div>`;
+    }
+    return;
+  }
+
+  let animIdx = 0;
+
+  if (mlCurrentCategory === "__currently__") {
+    // Group by category
+    const byCategory = {};
+    for (const item of list) {
+      const cat = item.category || "Unknown";
+      if (!byCategory[cat]) byCategory[cat] = [];
+      byCategory[cat].push(item);
+    }
+    for (const [catName, items] of Object.entries(byCategory)) {
+      const header = document.createElement("div");
+      header.className = "mlGroupHeader";
+      header.textContent = catName;
+      el.appendChild(header);
+      for (const item of items) {
+        el.appendChild(createMlEntryCard(item, animIdx++, false));
+      }
+    }
+  } else {
+    // __all__ or specific category: group by status
+    const showCat = mlCurrentCategory === "__all__";
+    const groups = { currently: [], completed: [], plan_to_watch: [] };
+    for (const item of list) {
+      const s = item.status || "plan_to_watch";
+      if (groups[s]) groups[s].push(item);
+      else groups.plan_to_watch.push(item);
+    }
+    for (const [statusKey, items] of Object.entries(groups)) {
+      if (items.length === 0) continue;
+      const header = document.createElement("div");
+      header.className = "mlGroupHeader";
+      header.textContent = STATUS_SHORT[statusKey] || statusKey;
+      el.appendChild(header);
+      for (const item of items) {
+        el.appendChild(createMlEntryCard(item, animIdx++, showCat));
+      }
+    }
+  }
+
+  attachMlCardHandlers(el);
+}
+
+// ── Add entry ──
+
 async function addMediaLogEntry() {
+  if (mlCurrentCategory === "__all__" || mlCurrentCategory === "__currently__") {
+    showToast("Select a specific category to add entries.", "error");
+    return;
+  }
+
   const titleInput = document.getElementById("mlEntryTitle");
   const progressInput = document.getElementById("mlEntryProgress");
   const statusSelect = document.getElementById("mlEntryStatus");

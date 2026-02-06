@@ -11,7 +11,9 @@ DB_PATH = os.path.join(APP_DIR, "vodmarks.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "srt_uploads")
 ALLOWED_EXTENSIONS = {'srt'}
 
-app = Flask(__name__)
+app = Flask(__name__,
+            template_folder=os.path.join(APP_DIR, "templates"),
+            static_folder=os.path.join(APP_DIR, "static"))
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB max file size
 
@@ -107,6 +109,28 @@ def init_db():
         status TEXT DEFAULT 'plan_to_start',
         created_at TEXT NOT NULL
     );""")
+
+    # Media categories table
+    cur.execute("""CREATE TABLE IF NOT EXISTS media_categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0
+    );""")
+
+    # Seed default categories if table is empty
+    cur.execute("SELECT COUNT(*) as c FROM media_categories")
+    if cur.fetchone()["c"] == 0:
+        defaults = ["Anime", "Movies", "TV", "Manga", "Books", "Games"]
+        for i, name in enumerate(defaults):
+            cur.execute("INSERT INTO media_categories (name, sort_order) VALUES (?, ?)", (name, i))
+        # Migrate existing media_log category names to proper case
+        name_map = {"anime": "Anime", "movies": "Movies", "tv": "TV",
+                     "manga": "Manga", "books": "Books", "games": "Games"}
+        for old, new in name_map.items():
+            cur.execute("UPDATE media_log SET category=? WHERE category=?", (new, old))
+
+    # Migrate plan_to_start → plan_to_watch
+    cur.execute("UPDATE media_log SET status='plan_to_watch' WHERE status='plan_to_start'")
 
     cur.execute("SELECT id FROM folders WHERE parent_id IS NULL AND name='Root'")
     if not cur.fetchone():
@@ -526,15 +550,21 @@ def get_srt(bid):
 
 ## ── Media Log API ──
 
-MEDIA_LOG_CATEGORIES = {"anime", "movies", "tv", "manga", "books", "games"}
-MEDIA_LOG_STATUSES = {"currently", "completed", "plan_to_start"}
+MEDIA_LOG_STATUSES = {"currently", "completed", "plan_to_watch"}
 
 @app.get("/api/media_log")
 def get_media_log():
-    category = (request.args.get("category") or "").strip().lower()
+    category = (request.args.get("category") or "").strip()
     conn = db()
-    if category and category in MEDIA_LOG_CATEGORIES:
-        rows = conn.execute("SELECT * FROM media_log WHERE category=? ORDER BY status, title ASC", (category,)).fetchall()
+    if category == "__all__":
+        rows = conn.execute("SELECT * FROM media_log ORDER BY title ASC").fetchall()
+    elif category == "__currently__":
+        rows = conn.execute("SELECT * FROM media_log WHERE status='currently' ORDER BY category, title ASC").fetchall()
+    elif category:
+        rows = conn.execute(
+            "SELECT * FROM media_log WHERE category=? ORDER BY CASE WHEN status='currently' THEN 0 ELSE 1 END, status, title ASC",
+            (category,)
+        ).fetchall()
     else:
         rows = conn.execute("SELECT * FROM media_log ORDER BY category, status, title ASC").fetchall()
     conn.close()
@@ -543,17 +573,20 @@ def get_media_log():
 @app.post("/api/media_log")
 def add_media_log():
     data = request.json or {}
-    category = (data.get("category") or "").strip().lower()
+    category = (data.get("category") or "").strip()
     title = (data.get("title") or "").strip()
     progress = (data.get("progress") or "").strip()
-    status = (data.get("status") or "plan_to_start").strip()
-    if category not in MEDIA_LOG_CATEGORIES:
-        return jsonify(error="Invalid category."), 400
+    status = (data.get("status") or "plan_to_watch").strip()
     if not title:
         return jsonify(error="Title is required."), 400
     if status not in MEDIA_LOG_STATUSES:
         return jsonify(error="Invalid status."), 400
+    # Validate category against DB
     conn = db()
+    cat_exists = conn.execute("SELECT id FROM media_categories WHERE name=?", (category,)).fetchone()
+    if not cat_exists:
+        conn.close()
+        return jsonify(error="Invalid category."), 400
     conn.execute("INSERT INTO media_log (category, title, progress, status, created_at) VALUES (?,?,?,?,?)",
                  (category, title, progress, status, datetime.now(timezone.utc).isoformat()))
     conn.commit()
@@ -588,6 +621,80 @@ def delete_media_log(mid):
     conn.close()
     if cur.rowcount == 0:
         return jsonify(error="Entry not found."), 404
+    return jsonify(ok=True)
+
+## ── Media Categories API ──
+
+@app.get("/api/media_categories")
+def get_media_categories():
+    conn = db()
+    rows = conn.execute("SELECT * FROM media_categories ORDER BY sort_order ASC").fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.post("/api/media_categories")
+def add_media_category():
+    data = request.json or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify(error="Name is required."), 400
+    conn = db()
+    row = conn.execute("SELECT MAX(sort_order) as m FROM media_categories").fetchone()
+    max_order = (row["m"] or 0) + 1
+    conn.execute("INSERT INTO media_categories (name, sort_order) VALUES (?, ?)", (name, max_order))
+    conn.commit()
+    conn.close()
+    return jsonify(ok=True)
+
+@app.patch("/api/media_categories/<int:cid>")
+def update_media_category(cid):
+    data = request.json or {}
+    conn = db()
+    cat = conn.execute("SELECT * FROM media_categories WHERE id=?", (cid,)).fetchone()
+    if not cat:
+        conn.close()
+        return jsonify(error="Category not found."), 404
+    name = (data.get("name") or "").strip()
+    if name and name != cat["name"]:
+        conn.execute("UPDATE media_log SET category=? WHERE category=?", (name, cat["name"]))
+        conn.execute("UPDATE media_categories SET name=? WHERE id=?", (name, cid))
+        conn.commit()
+    conn.close()
+    return jsonify(ok=True)
+
+@app.delete("/api/media_categories/<int:cid>")
+def delete_media_category(cid):
+    conn = db()
+    cat = conn.execute("SELECT name FROM media_categories WHERE id=?", (cid,)).fetchone()
+    if not cat:
+        conn.close()
+        return jsonify(error="Category not found."), 404
+    conn.execute("DELETE FROM media_log WHERE category=?", (cat["name"],))
+    conn.execute("DELETE FROM media_categories WHERE id=?", (cid,))
+    conn.commit()
+    conn.close()
+    return jsonify(ok=True)
+
+@app.post("/api/media_categories/<int:cid>/reorder")
+def reorder_media_category(cid):
+    data = request.json or {}
+    direction = data.get("direction")
+    if direction not in ("up", "down"):
+        return jsonify(error="Invalid direction."), 400
+    conn = db()
+    cats = [dict(c) for c in conn.execute("SELECT * FROM media_categories ORDER BY sort_order ASC").fetchall()]
+    idx = next((i for i, c in enumerate(cats) if c["id"] == cid), None)
+    if idx is None:
+        conn.close()
+        return jsonify(error="Category not found."), 404
+    swap_idx = idx - 1 if direction == "up" else idx + 1
+    if swap_idx < 0 or swap_idx >= len(cats):
+        conn.close()
+        return jsonify(ok=True)
+    conn.execute("UPDATE media_categories SET sort_order=? WHERE id=?", (cats[swap_idx]["sort_order"], cid))
+    conn.execute("UPDATE media_categories SET sort_order=? WHERE id=?", (cats[idx]["sort_order"], cats[swap_idx]["id"]))
+    conn.commit()
+    conn.close()
     return jsonify(ok=True)
 
 if __name__ == "__main__":
