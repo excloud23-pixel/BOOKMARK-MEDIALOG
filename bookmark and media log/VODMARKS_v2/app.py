@@ -98,6 +98,16 @@ def init_db():
         cur.execute("ALTER TABLE bookmarks_new RENAME TO bookmarks")
         print("Migration complete!")
     
+    # Media Log table
+    cur.execute("""CREATE TABLE IF NOT EXISTS media_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        category TEXT NOT NULL,
+        title TEXT NOT NULL,
+        progress TEXT DEFAULT '',
+        status TEXT DEFAULT 'plan_to_start',
+        created_at TEXT NOT NULL
+    );""")
+
     cur.execute("SELECT id FROM folders WHERE parent_id IS NULL AND name='Root'")
     if not cur.fetchone():
         cur.execute("INSERT INTO folders VALUES (NULL,'Root',NULL,?)",
@@ -424,6 +434,72 @@ def get_srt(bid):
     download_name = f"{safe_title}.srt"
     
     return send_file(filepath, as_attachment=True, download_name=download_name)
+
+## ── Media Log API ──
+
+MEDIA_LOG_CATEGORIES = {"anime", "movies", "tv", "manga", "books", "games"}
+MEDIA_LOG_STATUSES = {"currently", "completed", "plan_to_start"}
+
+@app.get("/api/media_log")
+def get_media_log():
+    category = (request.args.get("category") or "").strip().lower()
+    conn = db()
+    if category and category in MEDIA_LOG_CATEGORIES:
+        rows = conn.execute("SELECT * FROM media_log WHERE category=? ORDER BY status, title ASC", (category,)).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM media_log ORDER BY category, status, title ASC").fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.post("/api/media_log")
+def add_media_log():
+    data = request.json or {}
+    category = (data.get("category") or "").strip().lower()
+    title = (data.get("title") or "").strip()
+    progress = (data.get("progress") or "").strip()
+    status = (data.get("status") or "plan_to_start").strip()
+    if category not in MEDIA_LOG_CATEGORIES:
+        return jsonify(error="Invalid category."), 400
+    if not title:
+        return jsonify(error="Title is required."), 400
+    if status not in MEDIA_LOG_STATUSES:
+        return jsonify(error="Invalid status."), 400
+    conn = db()
+    conn.execute("INSERT INTO media_log (category, title, progress, status, created_at) VALUES (?,?,?,?,?)",
+                 (category, title, progress, status, datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    return jsonify(ok=True)
+
+@app.patch("/api/media_log/<int:mid>")
+def update_media_log(mid):
+    data = request.json or {}
+    conn = db()
+    row = conn.execute("SELECT * FROM media_log WHERE id=?", (mid,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify(error="Entry not found."), 404
+    title = (data.get("title") or "").strip() or row["title"]
+    progress = data.get("progress") if "progress" in data else row["progress"]
+    status = (data.get("status") or "").strip() or row["status"]
+    if status not in MEDIA_LOG_STATUSES:
+        conn.close()
+        return jsonify(error="Invalid status."), 400
+    conn.execute("UPDATE media_log SET title=?, progress=?, status=? WHERE id=?",
+                 (title, progress, status, mid))
+    conn.commit()
+    conn.close()
+    return jsonify(ok=True)
+
+@app.delete("/api/media_log/<int:mid>")
+def delete_media_log(mid):
+    conn = db()
+    cur = conn.execute("DELETE FROM media_log WHERE id=?", (mid,))
+    conn.commit()
+    conn.close()
+    if cur.rowcount == 0:
+        return jsonify(error="Entry not found."), 404
+    return jsonify(ok=True)
 
 if __name__ == "__main__":
     init_db()

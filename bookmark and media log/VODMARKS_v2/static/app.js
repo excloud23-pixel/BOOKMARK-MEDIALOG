@@ -429,3 +429,190 @@ window.addVod = addVod;
 window.addMedia = addMedia;
 
 loadAll();
+
+/* ═══════════════════════════════════════════════════
+   Tab Switching
+   ═══════════════════════════════════════════════════ */
+
+let activeTab = "vod";
+
+function switchTab(tab) {
+  activeTab = tab;
+  document.getElementById("tab-vod").style.display = tab === "vod" ? "" : "none";
+  document.getElementById("tab-medialog").style.display = tab === "medialog" ? "" : "none";
+
+  document.querySelectorAll(".tabBtn").forEach(btn => btn.classList.remove("tabActive"));
+  const idx = tab === "vod" ? 0 : 1;
+  document.querySelectorAll(".tabBtn")[idx].classList.add("tabActive");
+
+  if (tab === "medialog") {
+    loadMediaLog(mlCurrentCategory);
+  }
+}
+window.switchTab = switchTab;
+
+/* ═══════════════════════════════════════════════════
+   Media Log
+   ═══════════════════════════════════════════════════ */
+
+let mlCurrentCategory = "anime";
+
+const STATUS_LABELS = {
+  currently: "Currently watching/reading/playing",
+  completed: "Completed",
+  plan_to_start: "Plan to start"
+};
+
+const STATUS_SHORT = {
+  currently: "In Progress",
+  completed: "Completed",
+  plan_to_start: "Planned"
+};
+
+function selectCategory(cat) {
+  mlCurrentCategory = cat;
+  document.querySelectorAll(".mlCatBtn").forEach(b => b.classList.remove("mlCatActive"));
+  const btn = document.querySelector(`.mlCatBtn[data-cat="${cat}"]`);
+  if (btn) btn.classList.add("mlCatActive");
+  document.getElementById("mlTitle").textContent = btn ? btn.textContent : cat;
+  loadMediaLog(cat);
+}
+window.selectCategory = selectCategory;
+
+async function loadMediaLog(category) {
+  const r = await fetch(`/api/media_log?category=${encodeURIComponent(category)}`);
+  const data = await r.json();
+  renderMediaLogCards(data);
+}
+
+function renderMediaLogCards(list) {
+  const el = document.getElementById("mlCards");
+  el.innerHTML = "";
+
+  if (!Array.isArray(list) || list.length === 0) {
+    el.innerHTML = "<div class='empty'>No entries yet.</div>";
+    return;
+  }
+
+  // Group by status
+  const groups = { currently: [], completed: [], plan_to_start: [] };
+  for (const item of list) {
+    const s = item.status || "plan_to_start";
+    if (groups[s]) groups[s].push(item);
+    else groups.plan_to_start.push(item);
+  }
+
+  let animIdx = 0;
+  for (const [statusKey, items] of Object.entries(groups)) {
+    if (items.length === 0) continue;
+
+    const header = document.createElement("div");
+    header.className = "mlGroupHeader";
+    header.textContent = STATUS_SHORT[statusKey] || statusKey;
+    el.appendChild(header);
+
+    for (const item of items) {
+      const card = document.createElement("div");
+      card.className = "mlEntryCard cardAnimateIn";
+      card.style.animationDelay = `${animIdx * 0.04}s`;
+      animIdx++;
+
+      card.innerHTML = `
+        <div class="mlEntryContent">
+          <div class="mlEntryInfo">
+            <span class="mlEntryTitle">${escapeHtml(item.title)}</span>
+            <span class="mlEntryProgress">${escapeHtml(item.progress || "—")}</span>
+          </div>
+          <div class="mlEntryActions">
+            <select class="mlStatusSelect" data-id="${item.id}">
+              <option value="currently" ${item.status === "currently" ? "selected" : ""}>In Progress</option>
+              <option value="completed" ${item.status === "completed" ? "selected" : ""}>Completed</option>
+              <option value="plan_to_start" ${item.status === "plan_to_start" ? "selected" : ""}>Planned</option>
+            </select>
+            <button class="mlEditBtn" data-id="${item.id}" data-title="${escapeHtml(item.title)}" data-progress="${escapeHtml(item.progress || "")}">Edit</button>
+            <button class="miniBtn mlDelBtn" data-id="${item.id}">Delete</button>
+          </div>
+        </div>`;
+      el.appendChild(card);
+    }
+  }
+
+  // Status change handler
+  el.querySelectorAll(".mlStatusSelect").forEach(sel => {
+    sel.onchange = async () => {
+      const id = sel.getAttribute("data-id");
+      await fetch(`/api/media_log/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: sel.value })
+      });
+      loadMediaLog(mlCurrentCategory);
+    };
+  });
+
+  // Edit handler
+  el.querySelectorAll(".mlEditBtn").forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.getAttribute("data-id");
+      const oldTitle = btn.getAttribute("data-title");
+      const oldProgress = btn.getAttribute("data-progress");
+      const newTitle = prompt("Title:", oldTitle);
+      if (newTitle === null) return;
+      const newProgress = prompt("Progress:", oldProgress);
+      if (newProgress === null) return;
+      await fetch(`/api/media_log/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newTitle, progress: newProgress })
+      });
+      loadMediaLog(mlCurrentCategory);
+    };
+  });
+
+  // Delete handler
+  el.querySelectorAll(".mlDelBtn").forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.getAttribute("data-id");
+      if (!confirm("Delete this entry?")) return;
+      await fetch(`/api/media_log/${id}`, { method: "DELETE" });
+      loadMediaLog(mlCurrentCategory);
+    };
+  });
+}
+
+async function addMediaLogEntry() {
+  const status = document.getElementById("mlStatus");
+  const titleInput = document.getElementById("mlEntryTitle");
+  const progressInput = document.getElementById("mlEntryProgress");
+  const statusSelect = document.getElementById("mlEntryStatus");
+
+  const title = titleInput.value.trim();
+  if (!title) {
+    status.textContent = "Title is required.";
+    setTimeout(() => { status.textContent = ""; }, 2000);
+    return;
+  }
+
+  const res = await fetch("/api/media_log", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      category: mlCurrentCategory,
+      title: title,
+      progress: progressInput.value.trim(),
+      status: statusSelect.value
+    })
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    status.textContent = j.error || "Failed.";
+    return;
+  }
+  status.textContent = "Added.";
+  titleInput.value = "";
+  progressInput.value = "";
+  statusSelect.value = "currently";
+  setTimeout(() => { status.textContent = ""; }, 2000);
+  loadMediaLog(mlCurrentCategory);
+}
+window.addMediaLogEntry = addMediaLogEntry;
