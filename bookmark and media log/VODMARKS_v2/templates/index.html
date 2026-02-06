@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <title>VODMarks</title>
   <meta charset="utf-8" />
@@ -10,49 +10,88 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-<div class="tabBar">
-  <button class="tabBtn tabActive" onclick="switchTab('vod')">VOD Bookmarks</button>
-  <button class="tabBtn" onclick="switchTab('medialog')">Media Log</button>
-</div>
+<header class="tabBar" role="navigation" aria-label="Main tabs">
+  <div class="tabBarLeft">
+    <button class="tabBtn tabActive" onclick="switchTab('vod')" aria-selected="true" role="tab">VOD Bookmarks</button>
+    <button class="tabBtn" onclick="switchTab('medialog')" aria-selected="false" role="tab">Media Log</button>
+  </div>
+  <div class="tabBarRight">
+    <button class="themeToggleBtn" onclick="toggleTheme()" title="Toggle dark/light theme (T)" aria-label="Toggle theme">
+      <span class="themeIcon">&#9790;</span>
+    </button>
+    <button class="shortcutsBtn" onclick="showShortcutsHelp()" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
+  </div>
+</header>
 
-<!-- Tab 1: VOD Bookmarks (unchanged) -->
-<div id="tab-vod" class="tabPanel">
+<!-- Tab 1: VOD Bookmarks -->
+<div id="tab-vod" class="tabPanel" role="tabpanel">
   <div class="app">
-    <div class="sidebar">
+    <nav class="sidebar" aria-label="Folder navigation">
       <div class="sideTop">
-        <button class="btnPrimary" onclick="newFolder()">+ Folder</button>
+        <button class="btnPrimary" onclick="newFolder()" aria-label="Create new folder">+ Folder</button>
       </div>
-      <div id="tree"></div>
-    </div>
-    <div class="main">
-      <h2 id="title">Select folder</h2>
-      <div class="addSection">
+      <div id="tree" role="tree" aria-label="Folder tree"></div>
+      <button class="sidebarToggleMobile" onclick="toggleSidebar()" aria-label="Toggle sidebar">&#9776;</button>
+    </nav>
+    <main class="main">
+      <div class="mainHeader">
+        <h2 id="title">Select folder</h2>
+        <div class="viewControls">
+          <div class="searchWrap">
+            <input id="searchInput" type="search" placeholder="Search... (/)" aria-label="Search bookmarks" autocomplete="off">
+          </div>
+          <select id="sortSelect" class="sortSelect" onchange="applySort()" aria-label="Sort bookmarks">
+            <option value="default">Default order</option>
+            <option value="title_asc">Title A-Z</option>
+            <option value="title_desc">Title Z-A</option>
+            <option value="date_asc">Date (oldest)</option>
+            <option value="date_desc">Date (newest)</option>
+            <option value="duration_asc">Duration (short)</option>
+            <option value="duration_desc">Duration (long)</option>
+          </select>
+          <div class="viewToggle" role="radiogroup" aria-label="View mode">
+            <button class="viewBtn viewBtnActive" data-view="card" onclick="setViewMode('card')" title="Card view" aria-label="Card view">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+            </button>
+            <button class="viewBtn" data-view="list" onclick="setViewMode('list')" title="List view" aria-label="List view">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="2" width="14" height="2.5" rx="1"/><rect x="1" y="6.75" width="14" height="2.5" rx="1"/><rect x="1" y="11.5" width="14" height="2.5" rx="1"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+      <section class="addSection" aria-label="Add entries">
         <div class="addOption">
-          <div class="optionLabel">Add YouTube VOD:</div>
+          <label class="optionLabel" for="url">Add YouTube VOD:</label>
           <div class="row">
-            <input id="url" placeholder="Paste YouTube link">
+            <input id="url" placeholder="Paste YouTube link" aria-label="YouTube URL">
             <button class="btnPrimary" onclick="addVod()">Add VOD</button>
           </div>
         </div>
         <div class="addOption">
-          <div class="optionLabel">Add Media (Anime/Movie/etc):</div>
+          <label class="optionLabel" for="mediaTitle">Add Media (Anime/Movie/etc):</label>
           <div class="row">
             <input id="mediaTitle" placeholder="Title (e.g., Frieren)">
             <input id="mediaDate" placeholder="Year (e.g., 2026)" style="width: 150px;">
             <button class="btnPrimary" onclick="addMedia()">Add Media</button>
           </div>
         </div>
+      </section>
+      <!-- Bulk action bar (hidden by default) -->
+      <div id="bulkBar" class="bulkBar" style="display:none;" role="toolbar" aria-label="Bulk actions">
+        <span id="bulkCount">0 selected</span>
+        <button class="btnBulk btnBulkMove" onclick="bulkMove()">Move to...</button>
+        <button class="btnBulk btnBulkDelete" onclick="bulkDelete()">Delete selected</button>
+        <button class="btnBulk" onclick="clearSelection()">Cancel</button>
       </div>
-      <div id="status" class="status"></div>
-      <div id="cards"></div>
-    </div>
+      <div id="cards" role="list" aria-label="Bookmarks"></div>
+    </main>
   </div>
 </div>
 
 <!-- Tab 2: Media Log -->
-<div id="tab-medialog" class="tabPanel" style="display:none;">
+<div id="tab-medialog" class="tabPanel" style="display:none;" role="tabpanel">
   <div class="mediaLogWrap">
-    <div class="mlSidebar">
+    <nav class="mlSidebar" aria-label="Category navigation">
       <div class="mlSideTitle">Categories</div>
       <button class="mlCatBtn mlCatActive" data-cat="anime" onclick="selectCategory('anime')">Anime</button>
       <button class="mlCatBtn" data-cat="movies" onclick="selectCategory('movies')">Movies</button>
@@ -60,16 +99,28 @@
       <button class="mlCatBtn" data-cat="manga" onclick="selectCategory('manga')">Manga</button>
       <button class="mlCatBtn" data-cat="books" onclick="selectCategory('books')">Books</button>
       <button class="mlCatBtn" data-cat="games" onclick="selectCategory('games')">Games</button>
-    </div>
-    <div class="mlMain">
-      <h2 id="mlTitle">Anime</h2>
-      <div class="addSection">
+    </nav>
+    <main class="mlMain">
+      <div class="mainHeader">
+        <h2 id="mlTitle">Anime</h2>
+        <div class="viewControls">
+          <div class="searchWrap">
+            <input id="mlSearchInput" type="search" placeholder="Search... (/)" aria-label="Search media log" autocomplete="off">
+          </div>
+          <select id="mlSortSelect" class="sortSelect" onchange="applyMlSort()" aria-label="Sort entries">
+            <option value="default">Default order</option>
+            <option value="title_asc">Title A-Z</option>
+            <option value="title_desc">Title Z-A</option>
+          </select>
+        </div>
+      </div>
+      <section class="addSection" aria-label="Add media log entry">
         <div class="addOption">
-          <div class="optionLabel">Add Entry:</div>
+          <label class="optionLabel" for="mlEntryTitle">Add Entry:</label>
           <div class="row">
             <input id="mlEntryTitle" placeholder="Title">
             <input id="mlEntryProgress" placeholder="Progress (e.g., Ep 5, Ch 12, 40%)" style="width: 240px;">
-            <select id="mlEntryStatus">
+            <select id="mlEntryStatus" aria-label="Status">
               <option value="currently">Currently watching/reading/playing</option>
               <option value="completed">Completed</option>
               <option value="plan_to_start">Plan to start</option>
@@ -77,12 +128,73 @@
             <button class="btnPrimary" onclick="addMediaLogEntry()">Add</button>
           </div>
         </div>
-      </div>
-      <div id="mlStatus" class="status"></div>
-      <div id="mlCards"></div>
+      </section>
+      <div id="mlCards" role="list" aria-label="Media log entries"></div>
+    </main>
+  </div>
+</div>
+
+<!-- Custom confirmation modal -->
+<div id="modalOverlay" class="modalOverlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modalBox">
+    <div class="modalHeader">
+      <h3 id="modalTitle"></h3>
+    </div>
+    <p id="modalMessage"></p>
+    <!-- Optional: move-to folder picker content injected dynamically -->
+    <div id="modalExtra"></div>
+    <div class="modalActions">
+      <button id="modalCancel" class="btnModal" onclick="closeModal()">Cancel</button>
+      <button id="modalConfirm" class="btnModal btnModalDanger">Confirm</button>
     </div>
   </div>
 </div>
+
+<!-- Edit modal for media log entries -->
+<div id="editModalOverlay" class="modalOverlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="editModalTitle">
+  <div class="modalBox">
+    <div class="modalHeader">
+      <h3 id="editModalTitle">Edit Entry</h3>
+    </div>
+    <div class="modalForm">
+      <label class="optionLabel" for="editTitle">Title:</label>
+      <input id="editTitle" placeholder="Title">
+      <label class="optionLabel" for="editProgress">Progress:</label>
+      <input id="editProgress" placeholder="Progress">
+    </div>
+    <div class="modalActions">
+      <button class="btnModal" onclick="closeEditModal()">Cancel</button>
+      <button id="editModalSave" class="btnModal btnModalPrimary">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Keyboard shortcuts help modal -->
+<div id="shortcutsOverlay" class="modalOverlay" style="display:none;" role="dialog" aria-modal="true">
+  <div class="modalBox shortcutsBox">
+    <div class="modalHeader">
+      <h3>Keyboard Shortcuts</h3>
+    </div>
+    <div class="shortcutsList">
+      <div class="shortcutRow"><kbd>/</kbd><span>Focus search</span></div>
+      <div class="shortcutRow"><kbd>N</kbd><span>New folder</span></div>
+      <div class="shortcutRow"><kbd>T</kbd><span>Toggle theme</span></div>
+      <div class="shortcutRow"><kbd>1</kbd><span>VOD Bookmarks tab</span></div>
+      <div class="shortcutRow"><kbd>2</kbd><span>Media Log tab</span></div>
+      <div class="shortcutRow"><kbd>Esc</kbd><span>Close modal / Clear selection</span></div>
+      <div class="shortcutRow"><kbd>?</kbd><span>Show this help</span></div>
+    </div>
+    <div class="modalActions">
+      <button class="btnModal" onclick="closeShortcutsHelp()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toastContainer" class="toastContainer" aria-live="polite" aria-label="Notifications"></div>
+
+<!-- Mobile sidebar toggle (fixed button) -->
+<button class="mobileMenuBtn" onclick="toggleSidebar()" aria-label="Toggle sidebar menu">&#9776;</button>
 
 <script src="/static/app.js"></script>
 </body>
