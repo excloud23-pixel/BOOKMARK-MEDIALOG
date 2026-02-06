@@ -11,7 +11,9 @@ DB_PATH = os.path.join(APP_DIR, "vodmarks.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "srt_uploads")
 ALLOWED_EXTENSIONS = {'srt'}
 
-app = Flask(__name__)
+app = Flask(__name__,
+            template_folder=os.path.join(APP_DIR, "templates"),
+            static_folder=os.path.join(APP_DIR, "static"))
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB max file size
 
