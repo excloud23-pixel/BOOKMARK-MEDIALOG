@@ -176,6 +176,19 @@ def get_all_descendant_folder_ids(folder_id):
         stack.extend(children.get(fid, []))
     return out
 
+def get_folder_breadcrumb(folder_id):
+    """Get breadcrumb path for a folder like 'Root > Gaming > Clips'"""
+    conn = db()
+    folders = {r["id"]: r for r in conn.execute("SELECT id, name, parent_id FROM folders").fetchall()}
+    conn.close()
+    parts = []
+    fid = folder_id
+    while fid and fid in folders:
+        parts.append(folders[fid]["name"])
+        fid = folders[fid]["parent_id"]
+    parts.reverse()
+    return " > ".join(parts)
+
 # PROPER merged: only duplicates, one row per name
 def merged_groups(min_dupes=2):
     conn = db()
@@ -219,10 +232,18 @@ def api_merged_bookmarks():
         return jsonify([])
     ids = match["ids"]
     conn = db()
-    q = "SELECT * FROM bookmarks WHERE folder_id IN (%s) ORDER BY upload_date ASC" % ",".join(["?"]*len(ids))
+    q = ("SELECT b.*, f.name AS folder_name FROM bookmarks b "
+         "LEFT JOIN folders f ON b.folder_id = f.id "
+         "WHERE b.folder_id IN (%s) ORDER BY b.upload_date ASC") % ",".join(["?"]*len(ids))
     rows = conn.execute(q, ids).fetchall()
     conn.close()
-    return jsonify([dict(r) for r in rows])
+    results = []
+    for r in rows:
+        d = dict(r)
+        # Build breadcrumb for this bookmark's folder
+        d["folder_breadcrumb"] = get_folder_breadcrumb(d["folder_id"])
+        results.append(d)
+    return jsonify(results)
 
 @app.get("/api/bookmarks")
 def bookmarks():
@@ -331,6 +352,74 @@ def delete_folder(fid):
     conn.commit()
     conn.close()
     return jsonify(ok=True, deleted_folders=len(ids))
+
+@app.patch("/api/bookmark/<int:bid>")
+def update_bookmark(bid):
+    data = request.json or {}
+    conn = db()
+    bookmark = conn.execute("SELECT id FROM bookmarks WHERE id=?", (bid,)).fetchone()
+    if not bookmark:
+        conn.close()
+        return jsonify(error="Bookmark not found."), 404
+    folder_id = data.get("folder_id")
+    if folder_id is not None:
+        folder = conn.execute("SELECT id FROM folders WHERE id=?", (folder_id,)).fetchone()
+        if not folder:
+            conn.close()
+            return jsonify(error="Target folder not found."), 404
+        conn.execute("UPDATE bookmarks SET folder_id=? WHERE id=?", (folder_id, bid))
+    conn.commit()
+    conn.close()
+    return jsonify(ok=True)
+
+@app.post("/api/bookmarks/bulk_delete")
+def bulk_delete_bookmarks():
+    data = request.json or {}
+    ids = data.get("ids", [])
+    if not ids:
+        return jsonify(error="No bookmark IDs provided."), 400
+    conn = db()
+    q = "DELETE FROM bookmarks WHERE id IN (%s)" % ",".join(["?"] * len(ids))
+    cur = conn.execute(q, ids)
+    conn.commit()
+    conn.close()
+    return jsonify(ok=True, deleted=cur.rowcount)
+
+@app.post("/api/bookmarks/bulk_move")
+def bulk_move_bookmarks():
+    data = request.json or {}
+    ids = data.get("ids", [])
+    folder_id = data.get("folder_id")
+    if not ids or not folder_id:
+        return jsonify(error="IDs and folder_id required."), 400
+    conn = db()
+    folder = conn.execute("SELECT id FROM folders WHERE id=?", (folder_id,)).fetchone()
+    if not folder:
+        conn.close()
+        return jsonify(error="Target folder not found."), 404
+    q = "UPDATE bookmarks SET folder_id=? WHERE id IN (%s)" % ",".join(["?"] * len(ids))
+    conn.execute(q, [folder_id] + ids)
+    conn.commit()
+    conn.close()
+    return jsonify(ok=True)
+
+@app.get("/api/folders_flat")
+def folders_flat():
+    """Return flat list of all folders with breadcrumbs for move-to picker."""
+    conn = db()
+    rows = conn.execute("SELECT id, name, parent_id FROM folders").fetchall()
+    conn.close()
+    folders_map = {r["id"]: dict(r) for r in rows}
+    result = []
+    for fid, f in folders_map.items():
+        parts = []
+        cur = fid
+        while cur and cur in folders_map:
+            parts.append(folders_map[cur]["name"])
+            cur = folders_map[cur]["parent_id"]
+        parts.reverse()
+        result.append({"id": fid, "name": f["name"], "breadcrumb": " > ".join(parts)})
+    return jsonify(result)
 
 @app.delete("/api/bookmark/<int:bid>")
 def delete_bookmark(bid):
