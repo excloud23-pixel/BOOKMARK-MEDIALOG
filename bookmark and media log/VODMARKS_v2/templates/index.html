@@ -10,36 +10,80 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-<div class="app">
-  <div class="sidebar">
-    <div class="sideTop">
-      <button class="btnPrimary" onclick="newFolder()">+ Folder</button>
+<div class="tabBar">
+  <button class="tabBtn tabActive" onclick="switchTab('vod')">VOD Bookmarks</button>
+  <button class="tabBtn" onclick="switchTab('medialog')">Media Log</button>
+</div>
+
+<!-- Tab 1: VOD Bookmarks (unchanged) -->
+<div id="tab-vod" class="tabPanel">
+  <div class="app">
+    <div class="sidebar">
+      <div class="sideTop">
+        <button class="btnPrimary" onclick="newFolder()">+ Folder</button>
+      </div>
+      <div id="tree"></div>
     </div>
-    <div id="tree"></div>
-  </div>
-  <div class="main">
-    <h2 id="title">Select folder</h2>
-    <div class="addSection">
-      <div class="addOption">
-        <div class="optionLabel">Add YouTube VOD:</div>
-        <div class="row">
-          <input id="url" placeholder="Paste YouTube link">
-          <button class="btnPrimary" onclick="addVod()">Add VOD</button>
+    <div class="main">
+      <h2 id="title">Select folder</h2>
+      <div class="addSection">
+        <div class="addOption">
+          <div class="optionLabel">Add YouTube VOD:</div>
+          <div class="row">
+            <input id="url" placeholder="Paste YouTube link">
+            <button class="btnPrimary" onclick="addVod()">Add VOD</button>
+          </div>
+        </div>
+        <div class="addOption">
+          <div class="optionLabel">Add Media (Anime/Movie/etc):</div>
+          <div class="row">
+            <input id="mediaTitle" placeholder="Title (e.g., Frieren)">
+            <input id="mediaDate" placeholder="Year (e.g., 2026)" style="width: 150px;">
+            <button class="btnPrimary" onclick="addMedia()">Add Media</button>
+          </div>
         </div>
       </div>
-      <div class="addOption">
-        <div class="optionLabel">Add Media (Anime/Movie/etc):</div>
-        <div class="row">
-          <input id="mediaTitle" placeholder="Title (e.g., Frieren)">
-          <input id="mediaDate" placeholder="Year (e.g., 2026)" style="width: 150px;">
-          <button class="btnPrimary" onclick="addMedia()">Add Media</button>
-        </div>
-      </div>
+      <div id="status" class="status"></div>
+      <div id="cards"></div>
     </div>
-    <div id="status" class="status"></div>
-    <div id="cards"></div>
   </div>
 </div>
+
+<!-- Tab 2: Media Log -->
+<div id="tab-medialog" class="tabPanel" style="display:none;">
+  <div class="mediaLogWrap">
+    <div class="mlSidebar">
+      <div class="mlSideTitle">Categories</div>
+      <button class="mlCatBtn mlCatActive" data-cat="anime" onclick="selectCategory('anime')">Anime</button>
+      <button class="mlCatBtn" data-cat="movies" onclick="selectCategory('movies')">Movies</button>
+      <button class="mlCatBtn" data-cat="tv" onclick="selectCategory('tv')">TV</button>
+      <button class="mlCatBtn" data-cat="manga" onclick="selectCategory('manga')">Manga</button>
+      <button class="mlCatBtn" data-cat="books" onclick="selectCategory('books')">Books</button>
+      <button class="mlCatBtn" data-cat="games" onclick="selectCategory('games')">Games</button>
+    </div>
+    <div class="mlMain">
+      <h2 id="mlTitle">Anime</h2>
+      <div class="addSection">
+        <div class="addOption">
+          <div class="optionLabel">Add Entry:</div>
+          <div class="row">
+            <input id="mlEntryTitle" placeholder="Title">
+            <input id="mlEntryProgress" placeholder="Progress (e.g., Ep 5, Ch 12, 40%)" style="width: 240px;">
+            <select id="mlEntryStatus">
+              <option value="currently">Currently watching/reading/playing</option>
+              <option value="completed">Completed</option>
+              <option value="plan_to_start">Plan to start</option>
+            </select>
+            <button class="btnPrimary" onclick="addMediaLogEntry()">Add</button>
+          </div>
+        </div>
+      </div>
+      <div id="mlStatus" class="status"></div>
+      <div id="mlCards"></div>
+    </div>
+  </div>
+</div>
+
 <script src="/static/app.js"></script>
 </body>
 </html>
