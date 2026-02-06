@@ -116,14 +116,22 @@ function showModal(title, message, confirmText = "Confirm", isDanger = true) {
     const confirmBtn = document.getElementById("modalConfirm");
     confirmBtn.textContent = confirmText;
     confirmBtn.className = isDanger ? "btnModal btnModalDanger" : "btnModal btnModalPrimary";
-    confirmBtn.onclick = () => { closeModal(); resolve(true); };
+    confirmBtn.onclick = () => {
+      modalResolve = null;
+      document.getElementById("modalOverlay").style.display = "none";
+      resolve(true);
+    };
     document.getElementById("modalOverlay").style.display = "";
   });
 }
 
 function closeModal() {
   document.getElementById("modalOverlay").style.display = "none";
-  if (modalResolve) { modalResolve(false); modalResolve = null; }
+  if (modalResolve) {
+    const r = modalResolve;
+    modalResolve = null;
+    r(false);
+  }
 }
 
 window.closeModal = closeModal;
@@ -159,7 +167,8 @@ async function showMoveModal(title) {
     confirmBtn.textContent = "Move";
     confirmBtn.className = "btnModal btnModalPrimary";
     confirmBtn.onclick = () => {
-      closeModal();
+      modalResolve = null;
+      document.getElementById("modalOverlay").style.display = "none";
       resolve(selectedFolderId);
     };
 
