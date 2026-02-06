@@ -194,9 +194,10 @@ function renderCards(list) {
     return;
   }
 
-  for (const b of list) {
+  for (let i = 0; i < list.length; i++) {
+    const b = list[i];
     const c = document.createElement("div");
-    
+
     // Check if it's a media entry or YouTube entry
     if (b.entry_type === 'media') {
       // Simple media entry - just show title and date
@@ -236,6 +237,8 @@ function renderCards(list) {
         </div>
         <input type="file" accept=".srt" class="srtFileInput" data-id="${b.id}" style="display: none;">`;
     }
+    c.classList.add("cardAnimateIn");
+    c.style.animationDelay = `${i * 0.04}s`;
     el.appendChild(c);
   }
 
@@ -368,11 +371,13 @@ async function addVod() {
   if (!url) return;
 
   status.textContent = "Fetching metadata...";
+  status.classList.add("statusLoading");
   const res = await fetch("/api/bookmark", {
     method:"POST",
     headers:{"Content-Type":"application/json"},
     body:JSON.stringify({folder_id: current, url, entry_type: "youtube"})
   });
+  status.classList.remove("statusLoading");
   const j = await res.json().catch(()=> ({}));
   if (!res.ok) {
     status.textContent = j.error || "Failed.";
@@ -399,11 +404,13 @@ async function addMedia() {
   }
 
   status.textContent = "Adding media...";
+  status.classList.add("statusLoading");
   const res = await fetch("/api/bookmark", {
     method:"POST",
     headers:{"Content-Type":"application/json"},
     body:JSON.stringify({folder_id: current, title, date, entry_type: "media"})
   });
+  status.classList.remove("statusLoading");
   const j = await res.json().catch(()=> ({}));
   if (!res.ok) {
     status.textContent = j.error || "Failed.";
